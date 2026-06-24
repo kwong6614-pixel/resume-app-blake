@@ -279,6 +279,17 @@ export default function WithoutApiResumeForm({
       </div>
 
       <div>
+        <label className="block text-gray-700 font-medium mb-1">Company Name (optional)</label>
+        <input
+          type="text"
+          value={companyName}
+          onChange={(e) => setCompanyName(e.target.value)}
+          placeholder="Used in the PDF filename"
+          className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
+        />
+      </div>
+
+      <div>
         <div className="flex items-center justify-between mb-1">
           <label className="block text-gray-700 font-medium">Questions in JD (optional)</label>
           <button
@@ -311,17 +322,6 @@ export default function WithoutApiResumeForm({
           rows={6}
           placeholder='Paste the JSON from ChatGPT here...'
           className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none font-mono text-xs text-gray-900"
-        />
-      </div>
-
-      <div>
-        <label className="block text-gray-700 font-medium mb-1">Company Name (optional)</label>
-        <input
-          type="text"
-          value={companyName}
-          onChange={(e) => setCompanyName(e.target.value)}
-          placeholder="Used in the PDF filename"
-          className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
         />
       </div>
 
