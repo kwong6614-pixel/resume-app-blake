@@ -14,6 +14,7 @@ export default function WithoutApiResumeForm({
   profileName,
   profileData,
   profileDataLoading,
+  multipleProfiles,
 }: WithoutApiResumeFormProps) {
   const [jd, setJd] = useState('');
   const [questions, setQuestions] = useState('');
