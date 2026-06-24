@@ -133,6 +133,50 @@ export default function Home() {
     setCopyFeedback(null);
   };
 
+  const handleGenerateAllSelectedProfiles = async () => {
+    const form = formRef.current;
+    if (!form || !selectedProfiles || selectedProfiles.length === 0) return;
+
+    const jd = (form.querySelector('[name="job_description"]') as HTMLTextAreaElement)?.value.trim();
+    const company = (form.querySelector('[name="company"]') as HTMLInputElement)?.value.trim();
+    const role = (form.querySelector('[name="role"]') as HTMLInputElement)?.value.trim();
+
+    if (!jd || !company || !role) {
+      alert('Please fill in Job Description, Company, and Role before generating.');
+      return;
+    }
+
+    for (const profile of selectedProfiles) {
+      const formData = new FormData();
+      formData.append('base_resume_profile', profile);
+      formData.append('job_description', jd);
+      formData.append('company', company);
+      formData.append('role', role);
+
+      const response = await fetch('/api/generate-dynamic-resume-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message = data?.error || 'Failed to generate PDF';
+        alert(`Failed to generate PDF for ${profile}: ${message}`);
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${profile.replace(/\s+/g, '_')}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}_${role.replace(/[^a-zA-Z0-9_]/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    }
+  };
+
   if (!selectedProfiles) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -329,34 +373,7 @@ export default function Home() {
               {selectedProfiles && selectedProfiles.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    // gather form values
-                    const form = formRef.current;
-                    if (!form) return;
-                    const jd = (form.querySelector('[name="job_description"]') as HTMLTextAreaElement).value;
-                    const company = (form.querySelector('[name="company"]') as HTMLInputElement).value;
-                    const role = (form.querySelector('[name="role"]') as HTMLInputElement).value;
-                    selectedProfiles.forEach((profile) => {
-                      const f = document.createElement('form');
-                      f.method = 'POST';
-                      f.action = '/api/generate-dynamic-resume-pdf';
-                      f.target = '_blank';
-                      const add = (name: string, value: string) => {
-                        const i = document.createElement('input');
-                        i.type = 'hidden';
-                        i.name = name;
-                        i.value = value;
-                        f.appendChild(i);
-                      };
-                      add('base_resume_profile', profile);
-                      add('job_description', jd);
-                      add('company', company);
-                      add('role', role);
-                      document.body.appendChild(f);
-                      f.submit();
-                      document.body.removeChild(f);
-                    });
-                  }}
+                  onClick={handleGenerateAllSelectedProfiles}
                   className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors duration-200"
                 >
                   Generate for all selected profiles
