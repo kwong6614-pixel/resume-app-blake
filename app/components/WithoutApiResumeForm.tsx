@@ -7,6 +7,7 @@ type WithoutApiResumeFormProps = {
   profileName: string;
   profileData: WithoutApiProfileData | null;
   profileDataLoading: boolean;
+  multipleProfiles?: string[] | null;
 };
 
 export default function WithoutApiResumeForm({
@@ -170,6 +171,51 @@ export default function WithoutApiResumeForm({
     }
   };
 
+  const handleGenerateForAll = async () => {
+    if (!llmResponse.trim()) {
+      setError('Please paste the LLM response (JSON) first');
+      return;
+    }
+    if (!multipleProfiles || multipleProfiles.length === 0) return;
+    setError('');
+    setGenerating(true);
+    try {
+      for (const p of multipleProfiles) {
+        const response = await fetch('/api/without-api/generate-pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile: p, llmResponse: llmResponse.trim(), companyName: companyName.trim() || null }),
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to generate PDF for ${p}`);
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = `${p.replace(/\s+/g, '_')}.pdf`;
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+          if (filenameMatch) filename = filenameMatch[1];
+        }
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+      setLastGenerationTime(0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate PDFs');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   if (profileDataLoading) {
     return <p className="text-sm text-gray-500 text-center py-4">Loading profile data...</p>;
   }
@@ -288,6 +334,17 @@ export default function WithoutApiResumeForm({
       >
         {generating ? `Generating PDF... (${elapsedTime}s)` : 'Generate PDF'}
       </button>
+
+      {multipleProfiles && multipleProfiles.length > 1 && (
+        <button
+          type="button"
+          onClick={handleGenerateForAll}
+          disabled={generating || !llmResponse.trim()}
+          className="w-full mt-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors duration-200"
+        >
+          {generating ? `Generating PDFs...` : 'Generate for all selected profiles'}
+        </button>
+      )}
 
       {lastGenerationTime !== null && (
         <p className="text-xs text-green-600 text-center">

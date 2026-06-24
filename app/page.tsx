@@ -17,6 +17,10 @@ export default function Home() {
   const formRef = useRef<HTMLFormElement>(null);
   const [mode, setMode] = useState<GenerationMode>('without-api');
   const [profileName, setProfileName] = useState<string | null>(null);
+  const [selectedProfiles, setSelectedProfiles] = useState<string[] | null>(null);
+  const [availableProfiles, setAvailableProfiles] = useState<string[]>([]);
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
+  const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [gateInput, setGateInput] = useState('');
   const [gateError, setGateError] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
@@ -26,10 +30,22 @@ export default function Home() {
   const [withoutApiProfileLoading, setWithoutApiProfileLoading] = useState(false);
 
   useEffect(() => {
-    if (profileName === null) return;
+    // load available profiles for selection list
+    fetch('/api/profiles')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.profiles) setAvailableProfiles(data.profiles.map((p: any) => p.name));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedProfiles || selectedProfiles.length === 0) return;
+
+    if (!activeProfile) setActiveProfile(selectedProfiles[0]);
 
     if (mode === 'api') {
-      const params = new URLSearchParams({ profile: profileName });
+      const params = new URLSearchParams({ profile: selectedProfiles[0] });
       fetch(`/api/contact-info?${params}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => data && setContactInfo(data))
@@ -37,15 +53,27 @@ export default function Home() {
       return;
     }
 
+    // without-api: fetch profile data for all selected profiles
     setContactInfo(null);
     setWithoutApiProfileLoading(true);
-    const params = new URLSearchParams({ profile: profileName });
-    fetch(`/api/without-api/profile-data?${params}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setWithoutApiProfileData(data))
-      .catch(() => setWithoutApiProfileData(null))
+    const fetches = selectedProfiles.map((p) => {
+      const params = new URLSearchParams({ profile: p });
+      return fetch(`/api/without-api/profile-data?${params}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => ({ profile: p, data }))
+        .catch(() => ({ profile: p, data: null }));
+    });
+
+    Promise.all(fetches)
+      .then((results) => {
+        const map: Record<string, any> = {};
+        results.forEach((r) => {
+          map[r.profile] = r.data;
+        });
+        setWithoutApiProfileData(map as any);
+      })
       .finally(() => setWithoutApiProfileLoading(false));
-  }, [profileName, mode]);
+  }, [selectedProfiles, mode]);
 
   const copyToClipboard = async (label: string, value: string) => {
     if (!value.trim()) return;
@@ -79,7 +107,12 @@ export default function Home() {
         setGateError(data.error || 'Profile not found');
         return;
       }
-      setProfileName(data.name);
+      // if user has selected candidates from list, prefer those
+      if (selectedCandidates.length > 0) {
+        setSelectedProfiles(selectedCandidates);
+      } else {
+        setSelectedProfiles([data.name]);
+      }
     } catch {
       setGateError('Something went wrong. Please try again.');
     } finally {
@@ -89,12 +122,15 @@ export default function Home() {
 
   const handleBack = () => {
     setProfileName(null);
+    setSelectedProfiles(null);
+    setSelectedCandidates([]);
+    setActiveProfile(null);
     setContactInfo(null);
     setWithoutApiProfileData(null);
     setCopyFeedback(null);
   };
 
-  if (profileName === null) {
+  if (!selectedProfiles) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
         <div className="bg-white shadow-lg rounded-lg p-8 w-full max-w-xl">
@@ -127,6 +163,27 @@ export default function Home() {
                 autoFocus
                 autoComplete="off"
               />
+              {availableProfiles.length > 0 && (
+                <div className="mt-3 border rounded-md p-2 bg-gray-50">
+                  <p className="text-xs text-gray-600 mb-2">Or pick one or more profiles:</p>
+                  <div className="max-h-40 overflow-auto grid grid-cols-2 gap-2">
+                    {availableProfiles.map((p) => (
+                      <label key={p} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedCandidates.includes(p)}
+                          onChange={() => {
+                            setSelectedCandidates((prev) =>
+                              prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+                            );
+                          }}
+                        />
+                        <span className="truncate">{p}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             {gateError && <p className="text-sm text-red-600">{gateError}</p>}
             <button
@@ -165,18 +222,39 @@ export default function Home() {
             Change profile
           </button>
         </div>
-        <p className="text-sm text-gray-500 mb-1 text-center">
-          Profile: {profileName}
-        </p>
+        <div className="text-center mb-1">
+          <p className="text-sm text-gray-500">
+            Profiles: {selectedProfiles?.length ? selectedProfiles.join(', ') : ''}
+          </p>
+          {selectedProfiles && selectedProfiles.length > 1 && (
+            <div className="mt-2">
+              <label className="text-xs text-gray-500 mr-2">Active:</label>
+              <select
+                value={activeProfile ?? ''}
+                onChange={(e) => setActiveProfile(e.target.value)}
+                className="text-sm border border-gray-300 rounded-md p-1"
+              >
+                {selectedProfiles.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-gray-400 mb-4 text-center">
           Mode: {mode === 'api' ? 'Using API' : 'Without API'}
         </p>
 
         {mode === 'without-api' ? (
           <WithoutApiResumeForm
-            profileName={profileName}
-            profileData={withoutApiProfileData}
+            profileName={activeProfile ?? selectedProfiles?.[0] ?? ''}
+            profileData={
+              // when multiple profiles selected the data is a map
+              (withoutApiProfileData && (withoutApiProfileData as any)[(activeProfile ?? selectedProfiles?.[0])]) ||
+              (withoutApiProfileData as any)
+            }
             profileDataLoading={withoutApiProfileLoading}
+            multipleProfiles={selectedProfiles}
           />
         ) : (
           <>
@@ -213,7 +291,7 @@ export default function Home() {
               target="_blank"
               className="space-y-6"
             >
-              <input type="hidden" name="base_resume_profile" value={profileName} />
+              <input type="hidden" name="base_resume_profile" value={activeProfile ?? selectedProfiles?.[0]} />
               <div>
                 <label className="block text-gray-700 font-medium mb-2">Job Description:</label>
                 <textarea
@@ -245,6 +323,42 @@ export default function Home() {
               >
                 Generate PDF
               </button>
+              {selectedProfiles && selectedProfiles.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // gather form values
+                    const form = formRef.current;
+                    if (!form) return;
+                    const jd = (form.querySelector('[name="job_description"]') as HTMLTextAreaElement).value;
+                    const company = (form.querySelector('[name="company"]') as HTMLInputElement).value;
+                    const role = (form.querySelector('[name="role"]') as HTMLInputElement).value;
+                    selectedProfiles.forEach((profile) => {
+                      const f = document.createElement('form');
+                      f.method = 'POST';
+                      f.action = '/api/generate-dynamic-resume-pdf';
+                      f.target = '_blank';
+                      const add = (name: string, value: string) => {
+                        const i = document.createElement('input');
+                        i.type = 'hidden';
+                        i.name = name;
+                        i.value = value;
+                        f.appendChild(i);
+                      };
+                      add('base_resume_profile', profile);
+                      add('job_description', jd);
+                      add('company', company);
+                      add('role', role);
+                      document.body.appendChild(f);
+                      f.submit();
+                      document.body.removeChild(f);
+                    });
+                  }}
+                  className="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors duration-200"
+                >
+                  Generate for all selected profiles
+                </button>
+              )}
             </form>
           </>
         )}
