@@ -42,10 +42,13 @@ export default function Home() {
   useEffect(() => {
     if (!selectedProfiles || selectedProfiles.length === 0) return;
 
-    if (!activeProfile) setActiveProfile(selectedProfiles[0]);
+    if (!activeProfile) {
+      setActiveProfile(selectedProfiles[0]);
+      return;
+    }
 
     if (mode === 'api') {
-      const params = new URLSearchParams({ profile: selectedProfiles[0] });
+      const params = new URLSearchParams({ profile: activeProfile });
       fetch(`/api/contact-info?${params}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => data && setContactInfo(data))
@@ -73,7 +76,7 @@ export default function Home() {
         setWithoutApiProfileData(map as any);
       })
       .finally(() => setWithoutApiProfileLoading(false));
-  }, [selectedProfiles, mode]);
+  }, [selectedProfiles, mode, activeProfile]);
 
   const copyToClipboard = async (label: string, value: string) => {
     if (!value.trim()) return;
@@ -144,7 +147,7 @@ export default function Home() {
                 className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900 bg-white"
               >
                 <option value="without-api">Without API</option>
-                <option value="api" disabled>Using API</option>
+                <option value="api">Using API</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 {mode === 'api'
@@ -191,7 +194,7 @@ export default function Home() {
               disabled={gateLoading}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors duration-200"
             >
-              {gateLoading ? 'Checking...' : 'Continue'}
+              {gateLoading ? 'Checking...' : selectedCandidates.length > 0 ? 'Continue with selected profiles' : 'Continue'}
             </button>
           </form>
         </div>
