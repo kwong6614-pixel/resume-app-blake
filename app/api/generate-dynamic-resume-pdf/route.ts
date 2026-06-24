@@ -96,13 +96,12 @@ export async function POST(req: NextRequest) {
     const formData = await req.formData();
     const jobDescription = formData.get('job_description') as string;
     const company = formData.get('company') as string;
-    const role = formData.get('role') as string;
     const baseResumeProfile = formData.get('base_resume_profile') as string | null;
 
     // Validate required fields
-    if (!jobDescription || !company || !role) {
+    if (!jobDescription || !company) {
       return new NextResponse(
-        JSON.stringify({ error: 'Missing required fields: job_description, company, role' }),
+        JSON.stringify({ error: 'Missing required fields: job_description, company' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -149,7 +148,8 @@ export async function POST(req: NextRequest) {
     const pdfBytes = await generateResumePdf(tailoredResume, pdfTemplate);
 
     // 5. Return PDF as response
-    const fileBase = `${(baseResumeProfile && baseResumeProfile.replace(/[^a-zA-Z0-9_]/g, '_'))}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}_${role.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    const profileBase = (baseResumeProfile && baseResumeProfile.replace(/[^a-zA-Z0-9_]/g, '_')) || 'resume';
+    const fileBase = `${profileBase}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}`;
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {

@@ -139,10 +139,9 @@ export default function Home() {
 
     const jd = (form.querySelector('[name="job_description"]') as HTMLTextAreaElement)?.value.trim();
     const company = (form.querySelector('[name="company"]') as HTMLInputElement)?.value.trim();
-    const role = (form.querySelector('[name="role"]') as HTMLInputElement)?.value.trim();
 
-    if (!jd || !company || !role) {
-      alert('Please fill in Job Description, Company, and Role before generating.');
+    if (!jd || !company) {
+      alert('Please fill in Job Description and Company before generating.');
       return;
     }
 
@@ -151,7 +150,6 @@ export default function Home() {
       formData.append('base_resume_profile', profile);
       formData.append('job_description', jd);
       formData.append('company', company);
-      formData.append('role', role);
 
       const response = await fetch('/api/generate-dynamic-resume-pdf', {
         method: 'POST',
@@ -169,7 +167,7 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${profile.replace(/\s+/g, '_')}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}_${role.replace(/[^a-zA-Z0-9_]/g, '_')}.pdf`;
+      a.download = `${profile.replace(/\s+/g, '_')}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -352,14 +350,6 @@ export default function Home() {
                 <label className="block text-gray-700 font-medium mb-2">Company:</label>
                 <input
                   name="company"
-                  required
-                  className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
-                />
-              </div>
-              <div>
-                <label className="block text-gray-700 font-medium mb-2">Role:</label>
-                <input
-                  name="role"
                   required
                   className="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
                 />
