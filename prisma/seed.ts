@@ -3,6 +3,7 @@ import { baseResumes } from '../app/data/baseResumes';
 
 const prisma = new PrismaClient();
 
+
 async function main() {
   console.log('Starting seed...');
 
