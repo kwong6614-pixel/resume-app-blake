@@ -44,32 +44,45 @@ export default function Home() {
     window.URL.revokeObjectURL(url);
   };
 
-  const generatePdfForProfileAndJob = async (
+  const startPdfGeneration = (
     profile: string,
     company: string,
     jobDescription: string
-  ): Promise<boolean> => {
+  ): Promise<{ ok: boolean; error?: string }> => {
     const formData = new FormData();
     formData.append('base_resume_profile', profile);
     formData.append('job_description', jobDescription);
     formData.append('company', company);
 
-    const response = await fetch('/api/generate-dynamic-resume-pdf', {
+    return fetch('/api/generate-dynamic-resume-pdf', {
       method: 'POST',
       body: formData,
-    });
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          return { ok: false, error: (data?.error as string) || 'Failed to generate PDF' };
+        }
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      const message = data?.error || 'Failed to generate PDF';
-      alert(`Failed for ${profile} / ${company}: ${message}`);
+        const blob = await response.blob();
+        const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
+        const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
+        downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
+        return { ok: true };
+      })
+      .catch(() => ({ ok: false, error: 'Network error' }));
+  };
+
+  const generatePdfForProfileAndJob = async (
+    profile: string,
+    company: string,
+    jobDescription: string
+  ): Promise<boolean> => {
+    const result = await startPdfGeneration(profile, company, jobDescription);
+    if (!result.ok) {
+      alert(`Failed for ${profile} / ${company}: ${result.error}`);
       return false;
     }
-
-    const blob = await response.blob();
-    const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
-    const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
-    downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
     return true;
   };
 
@@ -88,33 +101,61 @@ export default function Home() {
       }
 
       const jobs: Array<{ company: string; jobDescription: string }> = sheetData.jobs;
-      const total = selectedProfiles.length * jobs.length;
-      let completed = 0;
+      const queue: Array<{ profile: string; company: string; jobDescription: string }> = [];
 
       for (const profile of selectedProfiles) {
         for (const job of jobs) {
-          completed += 1;
-          setSheetBatchProgress(
-            `Generating ${completed}/${total}: ${profile} — ${job.company}`
-          );
-
-          const ok = await generatePdfForProfileAndJob(
+          queue.push({
             profile,
-            job.company,
-            job.jobDescription
-          );
-          if (!ok) {
-            setSheetBatchProgress('Stopped due to an error.');
-            return;
-          }
-
-          if (completed < total) {
-            await sleep(1000);
-          }
+            company: job.company,
+            jobDescription: job.jobDescription,
+          });
         }
       }
 
-      setSheetBatchProgress(`Done. Generated ${total} PDF(s).`);
+      const total = queue.length;
+      let sent = 0;
+      let finished = 0;
+      let succeeded = 0;
+      const failures: string[] = [];
+
+      const generationTasks = queue.map(
+        (item, index) =>
+          new Promise<void>((resolve) => {
+            setTimeout(() => {
+              sent += 1;
+              setSheetBatchProgress(
+                `Sending ${sent}/${total}: ${item.profile} — ${item.company}`
+              );
+
+              void startPdfGeneration(item.profile, item.company, item.jobDescription).then(
+                (result) => {
+                  finished += 1;
+                  if (result.ok) {
+                    succeeded += 1;
+                  } else {
+                    failures.push(`${item.profile} / ${item.company}: ${result.error}`);
+                  }
+
+                  if (finished < total) {
+                    setSheetBatchProgress(`Completed ${finished}/${total} PDF(s)`);
+                  }
+                  resolve();
+                }
+              );
+            }, index * 1000);
+          })
+      );
+
+      await Promise.all(generationTasks);
+
+      if (failures.length > 0) {
+        alert(`${failures.length} PDF(s) failed:\n${failures.slice(0, 5).join('\n')}${
+          failures.length > 5 ? `\n...and ${failures.length - 5} more` : ''
+        }`);
+      }
+
+      setSheetBatchProgress(`Done. Generated ${succeeded}/${total} PDF(s).`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Sheet batch generation failed';
       alert(message);
