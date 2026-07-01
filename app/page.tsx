@@ -30,6 +30,8 @@ export default function Home() {
   const [withoutApiProfileLoading, setWithoutApiProfileLoading] = useState(false);
   const [sheetBatchLoading, setSheetBatchLoading] = useState(false);
   const [sheetBatchProgress, setSheetBatchProgress] = useState('');
+  const [sheetBatchPeriod, setSheetBatchPeriod] = useState<2 | 5 | 10>(2);
+  const [sheetBatchOrder, setSheetBatchOrder] = useState<'profile-first' | 'job-first'>('profile-first');
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -199,7 +201,7 @@ export default function Home() {
 
     if (failedItems.length > 0) {
       setSheetBatchProgress(
-        `Retrying ${failedItems.length} failed PDF(s) (1s apart)...`
+        `Retrying ${failedItems.length} failed PDF(s) (${sendIntervalMs / 1000}s apart)...`
       );
 
       for (let i = 0; i < failedItems.length; i++) {
@@ -228,7 +230,7 @@ export default function Home() {
         }
 
         if (i < failedItems.length - 1) {
-          await sleep(1000);
+          await sleep(sendIntervalMs);
         }
       }
     }
@@ -253,19 +255,32 @@ export default function Home() {
       const jobs: Array<{ company: string; jobDescription: string }> = sheetData.jobs;
       const queue: Array<{ profile: string; company: string; jobDescription: string }> = [];
 
-      for (const profile of selectedProfiles) {
+      if (sheetBatchOrder === 'profile-first') {
+        for (const profile of selectedProfiles) {
+          for (const job of jobs) {
+            queue.push({
+              profile,
+              company: job.company,
+              jobDescription: job.jobDescription,
+            });
+          }
+        }
+      } else {
         for (const job of jobs) {
-          queue.push({
-            profile,
-            company: job.company,
-            jobDescription: job.jobDescription,
-          });
+          for (const profile of selectedProfiles) {
+            queue.push({
+              profile,
+              company: job.company,
+              jobDescription: job.jobDescription,
+            });
+          }
         }
       }
 
       const total = queue.length;
+      const sendIntervalMs = sheetBatchPeriod * 1000;
 
-      const { succeeded, failures } = await runSheetBatchGeneration(queue, total, 1000);
+      const { succeeded, failures } = await runSheetBatchGeneration(queue, total, sendIntervalMs);
 
       if (failures.length > 0) {
         alert(`${failures.length} PDF(s) still failed after retries:\n${failures.slice(0, 5).join('\n')}${
@@ -603,6 +618,40 @@ export default function Home() {
                   Generate for all selected profiles
                 </button>
               )}
+              <div className="mt-4 p-3 border border-purple-200 rounded-md bg-purple-50 space-y-3">
+                <p className="text-sm font-medium text-purple-900">Google Sheet batch options</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block text-sm text-gray-700">
+                    Send period (seconds)
+                    <select
+                      value={sheetBatchPeriod}
+                      onChange={(e) =>
+                        setSheetBatchPeriod(Number(e.target.value) as 2 | 5 | 10)
+                      }
+                      disabled={sheetBatchLoading}
+                      className="mt-1 w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white disabled:opacity-50"
+                    >
+                      <option value={2}>2 seconds</option>
+                      <option value={5}>5 seconds</option>
+                      <option value={10}>10 seconds</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm text-gray-700">
+                    Generation order
+                    <select
+                      value={sheetBatchOrder}
+                      onChange={(e) =>
+                        setSheetBatchOrder(e.target.value as 'profile-first' | 'job-first')
+                      }
+                      disabled={sheetBatchLoading}
+                      className="mt-1 w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-purple-400 text-gray-900 bg-white disabled:opacity-50"
+                    >
+                      <option value="profile-first">Profile first (all jobs per profile)</option>
+                      <option value="job-first">Job first (all profiles per job)</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={handleGenerateFromGoogleSheet}
