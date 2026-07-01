@@ -28,6 +28,101 @@ export default function Home() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [withoutApiProfileData, setWithoutApiProfileData] = useState<WithoutApiProfileData | null>(null);
   const [withoutApiProfileLoading, setWithoutApiProfileLoading] = useState(false);
+  const [sheetBatchLoading, setSheetBatchLoading] = useState(false);
+  const [sheetBatchProgress, setSheetBatchProgress] = useState('');
+
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const downloadPdfBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const generatePdfForProfileAndJob = async (
+    profile: string,
+    company: string,
+    jobDescription: string
+  ): Promise<boolean> => {
+    const formData = new FormData();
+    formData.append('base_resume_profile', profile);
+    formData.append('job_description', jobDescription);
+    formData.append('company', company);
+
+    const response = await fetch('/api/generate-dynamic-resume-pdf', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const message = data?.error || 'Failed to generate PDF';
+      alert(`Failed for ${profile} / ${company}: ${message}`);
+      return false;
+    }
+
+    const blob = await response.blob();
+    const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
+    const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
+    downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
+    return true;
+  };
+
+  const handleGenerateFromGoogleSheet = async () => {
+    if (!selectedProfiles || selectedProfiles.length === 0) return;
+
+    setSheetBatchLoading(true);
+    setSheetBatchProgress('Loading jobs from Google Sheet...');
+
+    try {
+      const sheetRes = await fetch('/api/sheets/for-resume');
+      const sheetData = await sheetRes.json();
+
+      if (!sheetRes.ok || !sheetData?.jobs?.length) {
+        throw new Error(sheetData?.error || 'No jobs found in the For Resume tab');
+      }
+
+      const jobs: Array<{ company: string; jobDescription: string }> = sheetData.jobs;
+      const total = selectedProfiles.length * jobs.length;
+      let completed = 0;
+
+      for (const profile of selectedProfiles) {
+        for (const job of jobs) {
+          completed += 1;
+          setSheetBatchProgress(
+            `Generating ${completed}/${total}: ${profile} — ${job.company}`
+          );
+
+          const ok = await generatePdfForProfileAndJob(
+            profile,
+            job.company,
+            job.jobDescription
+          );
+          if (!ok) {
+            setSheetBatchProgress('Stopped due to an error.');
+            return;
+          }
+
+          if (completed < total) {
+            await sleep(1000);
+          }
+        }
+      }
+
+      setSheetBatchProgress(`Done. Generated ${total} PDF(s).`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Sheet batch generation failed';
+      alert(message);
+      setSheetBatchProgress('');
+    } finally {
+      setSheetBatchLoading(false);
+    }
+  };
 
   useEffect(() => {
     // load available profiles for selection list
@@ -145,33 +240,13 @@ export default function Home() {
       return;
     }
 
-    for (const profile of selectedProfiles) {
-      const formData = new FormData();
-      formData.append('base_resume_profile', profile);
-      formData.append('job_description', jd);
-      formData.append('company', company);
-
-      const response = await fetch('/api/generate-dynamic-resume-pdf', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        const message = data?.error || 'Failed to generate PDF';
-        alert(`Failed to generate PDF for ${profile}: ${message}`);
-        return;
+    for (let i = 0; i < selectedProfiles.length; i++) {
+      const profile = selectedProfiles[i];
+      const ok = await generatePdfForProfileAndJob(profile, company, jd);
+      if (!ok) return;
+      if (i < selectedProfiles.length - 1) {
+        await sleep(1000);
       }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${profile.replace(/\s+/g, '_')}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
     }
   };
 
@@ -368,6 +443,19 @@ export default function Home() {
                 >
                   Generate for all selected profiles
                 </button>
+              )}
+              <button
+                type="button"
+                onClick={handleGenerateFromGoogleSheet}
+                disabled={sheetBatchLoading}
+                className="w-full mt-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold py-2 px-4 rounded-md shadow transition-colors duration-200"
+              >
+                {sheetBatchLoading
+                  ? 'Generating from Google Sheet...'
+                  : 'Generate from Google Sheet (For Resume tab)'}
+              </button>
+              {sheetBatchProgress && (
+                <p className="text-sm text-gray-600 mt-2 text-center">{sheetBatchProgress}</p>
               )}
             </form>
           </>
