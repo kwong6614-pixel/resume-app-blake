@@ -15,6 +15,8 @@ import { renderTemplate8 } from './templates/template8';
 import { renderTemplate9 } from './templates/template9';
 import { renderTemplate10 } from './templates/template10';
 
+export const maxDuration = 120;
+
 // Retry helper for OpenAI API calls
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -142,7 +144,7 @@ export async function POST(req: NextRequest) {
       }
       
       return content;
-    }, 3, 1000); // Retry up to 3 times with 1s initial delay (exponential backoff)
+    }, 5, 2000); // Retry up to 5 times with 2s initial delay (exponential backoff)
 
     // 4. Generate PDF with template
     const pdfBytes = await generateResumePdf(tailoredResume, pdfTemplate);

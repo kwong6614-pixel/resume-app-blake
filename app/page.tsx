@@ -33,6 +33,10 @@ export default function Home() {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+  const PDF_MAX_ATTEMPTS = 4;
+  const PDF_RETRY_BASE_MS = 2000;
+
   const downloadPdfBlob = (blob: Blob, filename: string) => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -44,33 +48,93 @@ export default function Home() {
     window.URL.revokeObjectURL(url);
   };
 
-  const startPdfGeneration = (
+  type PdfRequestResult = {
+    ok: boolean;
+    error?: string;
+    retryable?: boolean;
+    attempts?: number;
+  };
+
+  const requestPdfGeneration = async (
     profile: string,
     company: string,
     jobDescription: string
-  ): Promise<{ ok: boolean; error?: string }> => {
+  ): Promise<PdfRequestResult> => {
     const formData = new FormData();
     formData.append('base_resume_profile', profile);
     formData.append('job_description', jobDescription);
     formData.append('company', company);
 
-    return fetch('/api/generate-dynamic-resume-pdf', {
-      method: 'POST',
-      body: formData,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          return { ok: false, error: (data?.error as string) || 'Failed to generate PDF' };
-        }
+    try {
+      const response = await fetch('/api/generate-dynamic-resume-pdf', {
+        method: 'POST',
+        body: formData,
+      });
 
-        const blob = await response.blob();
-        const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
-        const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
-        downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
-        return { ok: true };
-      })
-      .catch(() => ({ ok: false, error: 'Network error' }));
+      const contentType = response.headers.get('content-type') || '';
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        const message =
+          (data?.details as string) ||
+          (data?.error as string) ||
+          `HTTP ${response.status}`;
+        return {
+          ok: false,
+          error: message,
+          retryable: RETRYABLE_STATUS.has(response.status),
+        };
+      }
+
+      if (!contentType.includes('pdf')) {
+        const data = await response.json().catch(() => ({}));
+        const message =
+          (data?.details as string) ||
+          (data?.error as string) ||
+          'Server did not return a PDF';
+        return { ok: false, error: message, retryable: true };
+      }
+
+      const blob = await response.blob();
+      if (blob.size < 500) {
+        return { ok: false, error: 'PDF response was too small', retryable: true };
+      }
+
+      const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
+      const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
+      downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
+      return { ok: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Network error';
+      return { ok: false, error: message, retryable: true };
+    }
+  };
+
+  const generatePdfWithRetry = async (
+    profile: string,
+    company: string,
+    jobDescription: string,
+    onRetry?: (attempt: number, error: string) => void
+  ): Promise<PdfRequestResult> => {
+    let lastError = 'Failed to generate PDF';
+
+    for (let attempt = 1; attempt <= PDF_MAX_ATTEMPTS; attempt++) {
+      const result = await requestPdfGeneration(profile, company, jobDescription);
+      if (result.ok) {
+        return { ...result, attempts: attempt };
+      }
+
+      lastError = result.error || lastError;
+      const canRetry = result.retryable !== false && attempt < PDF_MAX_ATTEMPTS;
+      if (!canRetry) {
+        return { ok: false, error: lastError, attempts: attempt };
+      }
+
+      onRetry?.(attempt + 1, lastError);
+      await sleep(PDF_RETRY_BASE_MS * attempt);
+    }
+
+    return { ok: false, error: lastError, attempts: PDF_MAX_ATTEMPTS };
   };
 
   const generatePdfForProfileAndJob = async (
@@ -78,12 +142,98 @@ export default function Home() {
     company: string,
     jobDescription: string
   ): Promise<boolean> => {
-    const result = await startPdfGeneration(profile, company, jobDescription);
+    const result = await generatePdfWithRetry(profile, company, jobDescription);
     if (!result.ok) {
       alert(`Failed for ${profile} / ${company}: ${result.error}`);
       return false;
     }
     return true;
+  };
+
+  const runSheetBatchGeneration = async (
+    queue: Array<{ profile: string; company: string; jobDescription: string }>,
+    total: number,
+    sendIntervalMs: number
+  ) => {
+    let sent = 0;
+    let finished = 0;
+    let succeeded = 0;
+    const failedItems: typeof queue = [];
+    const failures: string[] = [];
+
+    const generationTasks = queue.map(
+      (item, index) =>
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            sent += 1;
+            setSheetBatchProgress(
+              `Sending ${sent}/${total}: ${item.profile} — ${item.company}`
+            );
+
+            void generatePdfWithRetry(
+              item.profile,
+              item.company,
+              item.jobDescription,
+              (attempt, error) => {
+                setSheetBatchProgress(
+                  `Retry ${attempt}/${PDF_MAX_ATTEMPTS} for ${item.profile} — ${item.company}: ${error}`
+                );
+              }
+            ).then((result) => {
+              finished += 1;
+              if (result.ok) {
+                succeeded += 1;
+              } else {
+                failedItems.push(item);
+                failures.push(`${item.profile} / ${item.company}: ${result.error}`);
+              }
+
+              setSheetBatchProgress(`Completed ${finished}/${total} PDF(s)`);
+              resolve();
+            });
+          }, index * sendIntervalMs);
+        })
+    );
+
+    await Promise.all(generationTasks);
+
+    if (failedItems.length > 0) {
+      setSheetBatchProgress(
+        `Retrying ${failedItems.length} failed PDF(s) (1s apart)...`
+      );
+
+      for (let i = 0; i < failedItems.length; i++) {
+        const item = failedItems[i];
+        setSheetBatchProgress(
+          `Final retry ${i + 1}/${failedItems.length}: ${item.profile} — ${item.company}`
+        );
+
+        const result = await generatePdfWithRetry(
+          item.profile,
+          item.company,
+          item.jobDescription,
+          (attempt, error) => {
+            setSheetBatchProgress(
+              `Final retry ${i + 1}/${failedItems.length} (attempt ${attempt}/${PDF_MAX_ATTEMPTS}): ${error}`
+            );
+          }
+        );
+
+        if (result.ok) {
+          succeeded += 1;
+          const failureIndex = failures.findIndex((f) =>
+            f.startsWith(`${item.profile} / ${item.company}:`)
+          );
+          if (failureIndex >= 0) failures.splice(failureIndex, 1);
+        }
+
+        if (i < failedItems.length - 1) {
+          await sleep(1000);
+        }
+      }
+    }
+
+    return { total, succeeded, failures };
   };
 
   const handleGenerateFromGoogleSheet = async () => {
@@ -114,43 +264,11 @@ export default function Home() {
       }
 
       const total = queue.length;
-      let sent = 0;
-      let finished = 0;
-      let succeeded = 0;
-      const failures: string[] = [];
 
-      const generationTasks = queue.map(
-        (item, index) =>
-          new Promise<void>((resolve) => {
-            setTimeout(() => {
-              sent += 1;
-              setSheetBatchProgress(
-                `Sending ${sent}/${total}: ${item.profile} — ${item.company}`
-              );
-
-              void startPdfGeneration(item.profile, item.company, item.jobDescription).then(
-                (result) => {
-                  finished += 1;
-                  if (result.ok) {
-                    succeeded += 1;
-                  } else {
-                    failures.push(`${item.profile} / ${item.company}: ${result.error}`);
-                  }
-
-                  if (finished < total) {
-                    setSheetBatchProgress(`Completed ${finished}/${total} PDF(s)`);
-                  }
-                  resolve();
-                }
-              );
-            }, index * 1000);
-          })
-      );
-
-      await Promise.all(generationTasks);
+      const { succeeded, failures } = await runSheetBatchGeneration(queue, total, 1000);
 
       if (failures.length > 0) {
-        alert(`${failures.length} PDF(s) failed:\n${failures.slice(0, 5).join('\n')}${
+        alert(`${failures.length} PDF(s) still failed after retries:\n${failures.slice(0, 5).join('\n')}${
           failures.length > 5 ? `\n...and ${failures.length - 5} more` : ''
         }`);
       }
