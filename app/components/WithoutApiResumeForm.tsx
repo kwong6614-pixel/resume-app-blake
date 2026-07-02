@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { parseContentDispositionFilename } from '@/app/utils/pdfFilename';
 import type { WithoutApiProfileData } from '@/app/utils/profilePrompt';
 
 type WithoutApiResumeFormProps = {
@@ -148,11 +149,10 @@ export default function WithoutApiResumeForm({
       a.href = url;
 
       const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `${profileName.replace(/\s+/g, '_')}.pdf`;
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch) filename = filenameMatch[1];
-      }
+      const filename = parseContentDispositionFilename(
+        contentDisposition,
+        `${profileName.replace(/\s+/g, '_')}_${(companyName.trim() || 'Company').replace(/\s+/g, '_')}.pdf`
+      );
 
       a.download = filename;
       document.body.appendChild(a);
@@ -196,11 +196,10 @@ export default function WithoutApiResumeForm({
         const a = document.createElement('a');
         a.href = url;
         const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = `${p.replace(/\s+/g, '_')}.pdf`;
-        if (contentDisposition) {
-          const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-          if (filenameMatch) filename = filenameMatch[1];
-        }
+        const filename = parseContentDispositionFilename(
+          contentDisposition,
+          `${p.replace(/\s+/g, '_')}_${(companyName.trim() || 'Company').replace(/\s+/g, '_')}.pdf`
+        );
         a.download = filename;
         document.body.appendChild(a);
         a.click();
@@ -279,12 +278,12 @@ export default function WithoutApiResumeForm({
       </div>
 
       <div>
-        <label className="block text-gray-700 font-medium mb-1">Company Name (optional)</label>
+        <label className="block text-gray-700 font-medium mb-1">Company Name</label>
         <input
           type="text"
           value={companyName}
           onChange={(e) => setCompanyName(e.target.value)}
-          placeholder="Used in the PDF filename"
+          placeholder="e.g. NVIDIA — used in PDF filename"
           className="w-full border border-gray-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
         />
       </div>

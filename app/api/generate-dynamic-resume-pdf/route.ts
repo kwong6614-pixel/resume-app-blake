@@ -3,6 +3,7 @@ import { OpenAI } from 'openai';
 import { getBaseResumeByName } from '@/app/data/db';
 import { buildPrompt } from '@/app/utils/promptBuilder';
 import { generateResumePdf } from '@/app/lib/generateResumePdf';
+import { buildPdfFilename } from '@/app/utils/pdfFilename';
 
 export const maxDuration = 120;
 
@@ -89,13 +90,13 @@ export async function POST(req: NextRequest) {
     const pdfBytes = await generateResumePdf(tailoredResume, pdfTemplate);
 
     // 5. Return PDF as response
-    const profileBase = (baseResumeProfile && baseResumeProfile.replace(/[^a-zA-Z0-9_]/g, '_')) || 'resume';
-    const fileBase = `${profileBase}_${company.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    const profileLabel = profile?.name || baseResumeProfile || 'Profile';
+    const fileName = buildPdfFilename(profileLabel, company);
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${fileBase}.pdf"`
+        'Content-Disposition': `attachment; filename="${fileName}"`
       }
     });
   } catch (error) {

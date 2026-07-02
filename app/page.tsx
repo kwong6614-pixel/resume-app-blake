@@ -1,6 +1,7 @@
 'use client';
 import { useRef, useState, useEffect } from 'react';
 import WithoutApiResumeForm from '@/app/components/WithoutApiResumeForm';
+import { parseContentDispositionFilename } from '@/app/utils/pdfFilename';
 import type { WithoutApiProfileData } from '@/app/utils/profilePrompt';
 
 type GenerationMode = 'api' | 'without-api';
@@ -102,9 +103,11 @@ export default function Home() {
         return { ok: false, error: 'PDF response was too small', retryable: true };
       }
 
-      const safeProfile = profile.replace(/[^a-zA-Z0-9_]/g, '_');
-      const safeCompany = company.replace(/[^a-zA-Z0-9_]/g, '_');
-      downloadPdfBlob(blob, `${safeProfile}_${safeCompany}.pdf`);
+      const fileName = parseContentDispositionFilename(
+        response.headers.get('Content-Disposition'),
+        `${profile.replace(/\s+/g, '_')}_${company.replace(/\s+/g, '_')}.pdf`
+      );
+      downloadPdfBlob(blob, fileName);
       return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Network error';

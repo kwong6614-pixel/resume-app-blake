@@ -55,18 +55,3 @@ export function buildResumePdfData(profileData: WithoutApiProfileData, resumeCon
   };
 }
 
-export function pdfAttachmentFilename(resumeName: string, companyName?: string | null) {
-  const nameParts = resumeName ? resumeName.trim().split(/\s+/) : [];
-  let base =
-    !nameParts.length
-      ? 'resume'
-      : nameParts.length === 1
-        ? nameParts[0]
-        : `${nameParts[0]}_${nameParts[nameParts.length - 1]}`;
-  base = base.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '');
-  if (companyName?.trim()) {
-    const c = companyName.trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '');
-    base = `${base}_${c}`;
-  }
-  return `${base}.pdf`;
-}

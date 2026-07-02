@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBaseResumeByName } from '@/app/data/db';
 import { parseWithoutApiProfileContent, type ResumeContent } from '@/app/utils/profilePrompt';
 import { extractJsonObjectString, parseResumeJsonString, detectTruncatedPaste, validateResumeShape } from '@/app/utils/resumeJson';
-import { buildResumePdfData, pdfAttachmentFilename } from '@/app/utils/profileUtils';
+import { buildResumePdfData } from '@/app/utils/profileUtils';
+import { buildPdfFilename } from '@/app/utils/pdfFilename';
 import { getWithoutApiTemplateId } from '@/app/utils/pdfTemplateMapping';
 import { renderPdfBuffer } from '@/app/utils/pdfRender';
 import { getTemplate } from '@/app/lib/pdf-templates';
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const templateData = buildResumePdfData(profileData, resumeContent);
     const pdfBuffer = await renderPdfBuffer(TemplateComponent, templateData);
-    const fileName = pdfAttachmentFilename(profileData.name, companyName);
+    const fileName = buildPdfFilename(profileName, companyName);
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
