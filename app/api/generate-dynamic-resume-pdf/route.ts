@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { OpenAI } from 'openai';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { getBaseResumeByName } from '@/app/data/db';
 import { buildPrompt } from '@/app/utils/promptBuilder';
-import { parseResume, TemplateContext } from './utils';
-import { renderTemplate1 } from './templates/template1';
-import { renderTemplate2 } from './templates/template2';
-import { renderTemplate3 } from './templates/template3';
-import { renderTemplate4 } from './templates/template4';
-import { renderTemplate5 } from './templates/template5';
-import { renderTemplate6 } from './templates/template6';
-import { renderTemplate7 } from './templates/template7';
-import { renderTemplate8 } from './templates/template8';
-import { renderTemplate9 } from './templates/template9';
-import { renderTemplate10 } from './templates/template10';
+import { generateResumePdf } from '@/app/lib/generateResumePdf';
 
 export const maxDuration = 120;
 
@@ -40,56 +29,6 @@ async function withRetry<T>(
   }
   
   throw lastError;
-}
-
-// Template router - routes to appropriate template renderer
-async function generateResumePdf(resumeText: string, template: number = 1): Promise<Uint8Array> {
-  const parsed = parseResume(resumeText);
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595, 842]); // A4
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const context: TemplateContext = {
-    pdfDoc,
-    page,
-    font,
-    fontBold,
-    name: parsed.name,
-    email: parsed.email,
-    phone: parsed.phone,
-    location: parsed.location,
-    linkedin: parsed.linkedin ?? '',
-    body: parsed.body,
-    PAGE_WIDTH: 595,
-    PAGE_HEIGHT: 842
-  };
-
-  // Route to appropriate template
-  switch (template) {
-    case 1:
-      return await renderTemplate1(context);
-    case 2:
-      return await renderTemplate2(context);
-    case 3:
-      return await renderTemplate3(context);
-    case 4:
-      return await renderTemplate4(context);
-    case 5:
-      return await renderTemplate5(context);
-    case 6:
-      return await renderTemplate6(context);
-    case 7:
-      return await renderTemplate7(context);
-    case 8:
-      return await renderTemplate8(context);
-    case 9:
-      return await renderTemplate9(context);
-    case 10:
-      return await renderTemplate10(context);
-    default:
-      return await renderTemplate1(context);
-  }
 }
 
 export async function POST(req: NextRequest) {

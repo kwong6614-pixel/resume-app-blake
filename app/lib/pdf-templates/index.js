@@ -8,10 +8,19 @@ import { ResumeExecutiveNavy } from './templates/ResumeExecutiveNavy';
 import { ResumeClassicCharcoal } from './templates/ResumeClassicCharcoal';
 import { ResumeConsultantSteel } from './templates/ResumeConsultantSteel';
 import { ResumeAcademicPurple } from './templates/ResumeAcademicPurple';
+import { ResumeAtsMinimal } from './templates/ResumeAtsMinimal';
+import { ResumeSidebarPro } from './templates/ResumeSidebarPro';
+import { ResumeStartupModern } from './templates/ResumeStartupModern';
+import { ResumeFinanceConservative } from './templates/ResumeFinanceConservative';
+import { ResumeHealthcareClinical } from './templates/ResumeHealthcareClinical';
+import { ResumeDesignerClean } from './templates/ResumeDesignerClean';
+import { ResumeCompactDense } from './templates/ResumeCompactDense';
+import { ResumeTimelinePro } from './templates/ResumeTimelinePro';
+import { ResumeInternationalCv } from './templates/ResumeInternationalCv';
+import { ResumeFederalStructured } from './templates/ResumeFederalStructured';
 
-// Template registry - maps template IDs to React components
 const templates = {
-  'Resume': ResumeTemplate,
+  Resume: ResumeTemplate,
   'Resume-Tech-Teal': ResumeTechTeal,
   'Resume-Modern-Green': ResumeModernGreen,
   'Resume-Creative-Burgundy': ResumeCreativeBurgundy,
@@ -21,13 +30,21 @@ const templates = {
   'Resume-Classic-Charcoal': ResumeClassicCharcoal,
   'Resume-Consultant-Steel': ResumeConsultantSteel,
   'Resume-Academic-Purple': ResumeAcademicPurple,
+  'Resume-ATS-Minimal': ResumeAtsMinimal,
+  'Resume-Sidebar-Pro': ResumeSidebarPro,
+  'Resume-Startup-Modern': ResumeStartupModern,
+  'Resume-Finance-Conservative': ResumeFinanceConservative,
+  'Resume-Healthcare-Clinical': ResumeHealthcareClinical,
+  'Resume-Designer-Clean': ResumeDesignerClean,
+  'Resume-Compact-Dense': ResumeCompactDense,
+  'Resume-Timeline-Pro': ResumeTimelinePro,
+  'Resume-International-CV': ResumeInternationalCv,
+  'Resume-Federal-Structured': ResumeFederalStructured,
 };
 
 export const getTemplate = (templateId) => {
-  // Default to 'Resume' if template not found
   const templateName = templateId || 'Resume';
-  return templates[templateName] || templates['Resume'];
+  return templates[templateName] || templates.Resume;
 };
 
 export default templates;
-

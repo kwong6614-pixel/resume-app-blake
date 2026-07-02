@@ -3,16 +3,14 @@ import { useState, useEffect } from 'react';
 import { BaseResumeProfile } from '@/app/data/baseResumes';
 import { DEFAULT_PROMPT_TEMPLATE } from '@/app/utils/promptBuilder';
 import { DEFAULT_WITHOUT_API_PROMPT } from '@/app/utils/defaultWithoutApiPrompt';
+import { WITHOUT_API_TEMPLATE_LABELS, PDF_TEMPLATE_COUNT } from '@/app/utils/pdfTemplateMapping';
 
 interface ProfileEditorProps {
   profiles: BaseResumeProfile[];
   onUpdate: () => void;
 }
 
-import { WITHOUT_API_TEMPLATE_LABELS } from '@/app/utils/pdfTemplateMapping';
-
-// PDF Template options (shared number; Without API uses React-PDF styles below)
-const PDF_TEMPLATES = Array.from({ length: 10 }, (_, i) => {
+const PDF_TEMPLATES = Array.from({ length: PDF_TEMPLATE_COUNT }, (_, i) => {
   const value = i + 1;
   return { value, label: `Template ${value} — ${WITHOUT_API_TEMPLATE_LABELS[value]}` };
 });
@@ -23,6 +21,8 @@ export default function ProfileEditor({ profiles, onUpdate }: ProfileEditorProps
   const [isCreating, setIsCreating] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'api' | 'without-api'>('api');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -126,6 +126,40 @@ export default function ProfileEditor({ profiles, onUpdate }: ProfileEditorProps
       setError('An error occurred. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePreviewTemplate = async () => {
+    if (!editingProfile) return;
+
+    setPreviewLoading(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/admin/preview-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pdfTemplate: editingProfile.pdfTemplate || 1,
+          mode: previewMode,
+          resumeText: editingProfile.resumeText?.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data.error || 'Failed to generate preview');
+        return;
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setError('Failed to generate preview. Please try again.');
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -286,23 +320,54 @@ export default function ProfileEditor({ profiles, onUpdate }: ProfileEditorProps
           {/* PDF Template Selection */}
           <div className="border-b border-gray-200 pb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">PDF Template</h3>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Select PDF Template
-              </label>
-              <select
-                value={editingProfile.pdfTemplate || 1}
-                onChange={(e) => setEditingProfile({ ...editingProfile, pdfTemplate: Number(e.target.value) })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              >
-                {PDF_TEMPLATES.map((template) => (
-                  <option key={template.value} value={template.value}>
-                    {template.label}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-xs text-gray-500">
-                Without API mode uses the visual style above. Using API mode uses its own pdf-lib layout for the same template number.
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select PDF Template
+                </label>
+                <select
+                  value={editingProfile.pdfTemplate || 1}
+                  onChange={(e) =>
+                    setEditingProfile({ ...editingProfile, pdfTemplate: Number(e.target.value) })
+                  }
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                >
+                  {PDF_TEMPLATES.map((template) => (
+                    <option key={template.value} value={template.value}>
+                      {template.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Preview mode
+                  </label>
+                  <select
+                    value={previewMode}
+                    onChange={(e) =>
+                      setPreviewMode(e.target.value as 'api' | 'without-api')
+                    }
+                    disabled={previewLoading}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 disabled:opacity-50"
+                  >
+                    <option value="api">Using API (pdf-lib)</option>
+                    <option value="without-api">Without API (React-PDF)</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={handlePreviewTemplate}
+                  disabled={previewLoading}
+                  className="sm:w-auto w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-semibold py-2 px-5 rounded-lg transition-colors"
+                >
+                  {previewLoading ? 'Generating preview...' : 'Preview Template'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                Preview uses sample resume data. In API mode, your resume text is used when provided.
+                Without API mode uses sample JSON layout. Template numbers 1–{PDF_TEMPLATE_COUNT} are shared across both modes.
               </p>
             </div>
           </div>
